@@ -44,32 +44,76 @@ CUSTOMER_SORTS = {"name": "name", "nik": "nik", "phone": "phone",
                   "monthly_income": "monthly_income", "kyc_status": "kyc_status",
                   "created_at": "created_at", "updated_at": "updated_at", **clock.SORTS}
 
+LEGAL_RANK = {"belum": 0, "ppjb": 1, "akad_kredit": 2, "pelunasan": 3, "bast": 4, "ajb": 5,
+              "sertifikat": 6}
+
+
+async def _legal_by_customer(org: str) -> dict:
+    """Tahap legal tertinggi per pelanggan dari `contracts` (SSOT tahap legal pembeli) —
+    supaya daftar Customer langsung menjawab "siapa yang sudah akad"."""
+    rows = await db.contracts.find(
+        {"org_id": org, "state": {"$ne": "cancelled"}, "customer_id": {"$ne": None}},
+        {"_id": 0, "customer_id": 1, "legal_stage": 1, "legal": 1, "scheme": 1,
+         "unit_code": 1, "id": 1}).to_list(10000)
+    out = {}
+    for c in rows:
+        legal = c.get("legal") or {}
+        stage = c.get("legal_stage") or "belum"
+        akad = legal.get("akad_kredit") or {}
+        cur = out.get(c["customer_id"])
+        if cur and LEGAL_RANK.get(cur["stage"], 0) >= LEGAL_RANK.get(stage, 0):
+            if akad and not cur.get("akad_date"):
+                cur["akad_date"] = akad.get("date")
+            continue
+        out[c["customer_id"]] = {
+            "stage": stage, "contract_id": c["id"], "unit_code": c.get("unit_code"),
+            "scheme": c.get("scheme"), "akad_date": akad.get("date"),
+            "akad_override": bool(akad.get("override")),
+            "ajb_date": (legal.get("ajb") or {}).get("date")}
+    return out
+
 
 @router.get("")
 async def list_customers(q: str = None, kyc_status: str = None,
                          created_from: str = None, created_to: str = None,
-                         sla: str = None,
+                         sla: str = None, legal_stage: str = None,
                          sort: str = None, direction: str = None,
                          skip: int = 0, limit: int = 50,
                          user: dict = Depends(require_permission("customers", "view"))):
     """Daftar customer: cari + filter multi (KYC) + sort server-side (Fase 40) +
-    filter umur/SLA verifikasi berkas dari kebijakan Pusat Konfigurasi (Fase 41)."""
+    filter umur/SLA verifikasi berkas dari kebijakan Pusat Konfigurasi (Fase 41) +
+    filter tahap legal kontrak (belum/ppjb/akad_kredit/…)."""
     skip, limit = parse_pagination(skip, limit)
-    query = {"org_id": user.get("org_id", ORG_ID)}
+    org = user.get("org_id", ORG_ID)
+    query = {"org_id": org}
     lst.apply_in(query, "kyc_status", kyc_status)
     clock.apply_sla_filter(query, "customer", sla)
     lst.apply_range(query, "created_at", created_from, created_to)
     lst.apply_search(query, q, ("name", "phone", "nik", "email", "npwp"))
+    legal_map = await _legal_by_customer(org)
+    wanted = [v for v in lst.multi(legal_stage) if v in LEGAL_RANK]
+    if wanted:
+        if "belum" in wanted:
+            query["id"] = {"$nin": [cid for cid, v in legal_map.items()
+                                    if v["stage"] not in wanted]}
+        else:
+            query["id"] = {"$in": [cid for cid, v in legal_map.items() if v["stage"] in wanted]}
     total = await db.customers.count_documents(query)
     rows = await (db.customers.find(query, {"_id": 0})
                   .sort(lst.sort_spec(sort, direction, CUSTOMER_SORTS, ("created_at", -1)))
                   .skip(skip).limit(limit).to_list(limit))
-    await clock.attach(rows, "customer", org_id=user.get("org_id", ORG_ID))
+    await clock.attach(rows, "customer", org_id=org)
+    for r in rows:
+        r["legal"] = legal_map.get(r["id"]) or {"stage": "belum"}
     counts = {}
     for st in ("pending", "submitted", "verified"):
-        counts[st] = await db.customers.count_documents(
-            {"org_id": user.get("org_id", ORG_ID), "kyc_status": st})
-    return {"data": serialize_doc(rows), "total": total, "counts": counts}
+        counts[st] = await db.customers.count_documents({"org_id": org, "kyc_status": st})
+    legal_counts = {}
+    for v in legal_map.values():
+        legal_counts[v["stage"]] = legal_counts.get(v["stage"], 0) + 1
+    legal_counts["akad_done"] = sum(1 for v in legal_map.values() if v.get("akad_date"))
+    return {"data": serialize_doc(rows), "total": total, "counts": counts,
+            "legal_counts": legal_counts}
 
 
 @router.post("")

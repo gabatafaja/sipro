@@ -432,6 +432,7 @@ class ReceiptCreate(BaseModel):
     allow_overpay: bool = False   # True = kelebihan dicatat sbg titipan pelanggan
     cash_account_id: Optional[str] = None   # Fase 82: rekening/kas tempat uang mendarat
     allocations: Optional[List[ReceiptAllocation]] = None   # termin yang dipilih kasir (sisanya FIFO)
+    proof_file_ids: List[str] = []   # bukti bayar (struk transfer/foto) — tampil di semua laporan
 
 
 class ApBillCreate(BaseModel):

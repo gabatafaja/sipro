@@ -460,6 +460,22 @@ async def receipt_numbers() -> dict:
     return {"receipts.receipt_no diberi nomor": diberi}
 
 
+async def akad_mirror() -> dict:
+    """Cermin tanggal akad kredit dari `contracts.legal.akad_kredit` ke `deals.akad_at`
+    (kontrak lama sebelum kolom "Tahap legal" di daftar Customer/Deals)."""
+    n = 0
+    cur = db.contracts.find({"legal.akad_kredit": {"$ne": None}},
+                            {"_id": 0, "deal_id": 1, "legal.akad_kredit.date": 1})
+    async for c in cur:
+        date = ((c.get("legal") or {}).get("akad_kredit") or {}).get("date")
+        if not date or not c.get("deal_id"):
+            continue
+        r = await db.deals.update_one({"id": c["deal_id"], "akad_at": {"$exists": False}},
+                                      {"$set": {"akad_at": date}})
+        n += r.modified_count
+    return {"deals_akad_at": n} if n else {}
+
+
 async def run_migrations() -> dict:
     """Semua migrasi (idempoten). Dipanggil di lifespan setelah ensure_indexes."""
     enums = await canonicalize_enums()
@@ -472,6 +488,9 @@ async def run_migrations() -> dict:
     capi_identity = await capi_event_identity()
     reminder_ident = await reminder_recipient_identity()
     receipt_nos = await receipt_numbers()
+    akad = await akad_mirror()
+    if akad:
+        logger.info("Migrasi cermin akad ke deals: %s", akad)
     if receipt_nos:
         logger.info("Migrasi nomor kwitansi (Fase 51C): %s", receipt_nos)
     if reminder_ident:

@@ -446,6 +446,11 @@ async def portal_file(file_id: str, request: Request, variant: str = Query(None)
             {"org_id": org, "id": file_id, "owner_type": "payment_proof",
              "portal_customer_id": cust.get("id"), "is_deleted": False})
     if not allowed:
+        # Bukti bayar yang dilampirkan Keuangan pada kuitansi milik pembeli ini.
+        deal_ids = [d["id"] for d in deals]
+        allowed = deal_ids and await db.receipts.count_documents(
+            {"org_id": org, "deal_id": {"$in": deal_ids}, "proof_file_ids": file_id})
+    if not allowed:
         raise HTTPException(404, "Foto tidak ditemukan.")
     rec = await db.files.find_one({"id": file_id, "org_id": org, "is_deleted": False}, {"_id": 0})
     if not rec:

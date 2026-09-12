@@ -202,6 +202,15 @@ async def update_unit(project_id: str, unit_id: str, payload: UnitUpdate,
         raise HTTPException(status_code=400,
                             detail="Harga unit yang sudah booked/terjual tidak boleh diubah "
                                    "(mengubah dasar tagihan & komisi).")
+    if "scheme_prices" in upd:
+        if unit.get("status") in ("booked", "sold"):
+            raise HTTPException(status_code=400,
+                                detail="Harga per skema unit yang sudah booked/terjual tidak boleh diubah.")
+        import unit_pricing as up
+        try:
+            upd["scheme_prices"] = up.clean_scheme_prices(upd["scheme_prices"])
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     upd["updated_at"] = now_iso()
     await db.units.update_one({"id": unit_id, "org_id": org}, {"$set": upd})
     await audit_log(user, "update", "units", unit_id, {"fields": sorted(upd)})

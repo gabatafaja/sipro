@@ -10,6 +10,7 @@ class BookingFeePayIn(BaseModel):
     amount: int = Field(gt=0)
     method: ref.PaymentMethod = "transfer"
     note: Optional[str] = None
+    proof_file_ids: List[str] = []
 
 
 class BookingFeeRefundIn(BaseModel):

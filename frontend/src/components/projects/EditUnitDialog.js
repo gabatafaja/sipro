@@ -13,6 +13,8 @@ import { formatIDR } from "@/utils/formatters";
 import api from "@/services/apiClient";
 import { PROJECT_EDIT } from "@/constants/testIds";
 
+const SCHEME_KINDS = [["cash_keras", "Cash keras"], ["cash_bertahap", "Cash bertahap"], ["kpr", "KPR"]];
+
 /**
  * Ubah master unit: tipe, harga, dan (Fase 28b) luas tanah/bangunan, orientasi, hoek.
  *
@@ -34,6 +36,7 @@ export default function EditUnitDialog({ projectId, unit, open, onOpenChange, on
       setForm({
         type: unit.type || "",
         price: String(unit.price ?? ""),
+        scheme_prices: Object.fromEntries(SCHEME_KINDS.map(([k]) => [k, unit.scheme_prices?.[k] ?? ""])),
         luas_tanah: unit.luas_tanah != null ? String(unit.luas_tanah) : "",
         luas_bangunan: unit.luas_bangunan != null ? String(unit.luas_bangunan) : "",
         orientation: unit.orientation || "",
@@ -48,7 +51,10 @@ export default function EditUnitDialog({ projectId, unit, open, onOpenChange, on
     setBusy(true);
     try {
       const body = { type: form.type, corner: form.corner };
-      if (!locked) body.price = Math.round(Number(form.price) || 0);
+      if (!locked) {
+        body.price = Math.round(Number(form.price) || 0);
+        body.scheme_prices = Object.fromEntries(SCHEME_KINDS.map(([k]) => [k, Math.round(Number(form.scheme_prices?.[k]) || 0)]));
+      }
       const lt = num(form.luas_tanah);
       const lb = num(form.luas_bangunan);
       if (lt !== undefined) body.luas_tanah = lt;
@@ -86,6 +92,19 @@ export default function EditUnitDialog({ projectId, unit, open, onOpenChange, on
             <RupiahInput id="editunitdialog-harga-rp" data-testid={PROJECT_EDIT.unitFormPrice} value={form.price}
               disabled={locked} onChange={(e) => set("price", e.target.value)} />
             <p className="text-xs text-muted-foreground">{formatIDR(Number(form.price) || 0)}</p>
+          </div>
+          <div className="space-y-1.5 rounded-lg border p-2.5 sm:col-span-2">
+            <Label>Harga per skema pembayaran (opsional — kosong = harga dasar)</Label>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {SCHEME_KINDS.map(([k, label]) => (
+                <div key={k} className="space-y-1">
+                  <Label htmlFor={`eu-sp-${k}`} className="text-[11px] text-muted-foreground">{label}</Label>
+                  <RupiahInput id={`eu-sp-${k}`} data-testid={`unit-form-scheme-price-${k}`} disabled={locked}
+                    value={form.scheme_prices?.[k] ?? ""} placeholder="= dasar"
+                    onChange={(e) => set("scheme_prices", { ...(form.scheme_prices || {}), [k]: e.target.value })} />
+                </div>
+              ))}
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="editunitdialog-luas-tanah-m2">Luas tanah (m²)</Label>

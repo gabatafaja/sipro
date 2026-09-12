@@ -2,7 +2,7 @@
 
 Dipisah dari models.py agar tetap di bawah batas ukuran file (gate compliance).
 """
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -67,6 +67,8 @@ class UnitUpdate(BaseModel):
     """
     type: ref.UnitType = None
     price: Optional[int] = None
+    # Harga per jenis skema pembayaran (opsional): {"cash_keras": .., "cash_bertahap": .., "kpr": ..}
+    scheme_prices: Optional[Dict[str, Optional[int]]] = None
     luas_tanah: Optional[int] = Field(default=None, ge=0, le=100000)
     luas_bangunan: Optional[int] = Field(default=None, ge=0, le=100000)
     orientation: ref.UnitOrientation = None

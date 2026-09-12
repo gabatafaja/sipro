@@ -62,6 +62,9 @@ class LegalAdvanceIn(BaseModel):
     place: Optional[str] = None
     file_id: Optional[str] = None
     note: Optional[str] = None
+    # Pengecualian manajer: mencatat tahap walau penahan yang boleh dikecualikan masih ada
+    # (mis. kelebihan tanah belum lunas) — alasan tertulis wajib, tercatat di riwayat legal.
+    override_reason: Optional[str] = None
 
 
 class KprStageIn(BaseModel):

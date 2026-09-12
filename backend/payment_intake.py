@@ -131,7 +131,8 @@ async def verify(org: str = ORG_ID, intake_id: str = None, actor: str = "system"
     res = await fin.apply_receipt(
         row["deal_id"], int(row["amount"]), "transfer",
         note or f"Verifikasi bukti transfer pelanggan ({row['transfer_date']})",
-        actor, org_id=org, allow_overpay=allow_overpay)
+        actor, org_id=org, allow_overpay=allow_overpay,
+        proof_file_ids=list(row.get("file_ids") or []))
     ts = now_iso()
     await db.payment_intakes.update_one({"id": intake_id}, {"$set": {
         "state": "verified", "state_label": _label("verified"),

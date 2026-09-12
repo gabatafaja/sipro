@@ -3,7 +3,7 @@
 Dipisah dari `models.py` (sudah besar) agar tetap di bawah batas gate compliance.
 Semua enum divalidasi lewat SSOT `reference.py` (Annotated validator), bukan string bebas.
 """
-from typing import Annotated, List, Optional
+from typing import Annotated, Dict, List, Optional
 
 from pydantic import AfterValidator, BaseModel, Field, field_validator
 
@@ -109,6 +109,7 @@ class UnitPatchV2(BaseModel):
     land_area: Optional[int] = None
     building_area: Optional[int] = None
     price: Optional[int] = None
+    scheme_prices: Optional[Dict[str, Optional[int]]] = None
     is_hook: Optional[bool] = None
     excess_land_m2: Optional[int] = None
     excess_land_price_agreed: Optional[int] = None

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import ReferenceSelect from "@/components/patterns/ReferenceSelect";
+import EvidenceUploader from "@/components/patterns/EvidenceUploader";
 import { formatIDR } from "@/utils/formatters";
 import api from "@/services/apiClient";
 import { FINANCE } from "@/constants/testIds";
@@ -31,6 +32,7 @@ export default function ReceiptDialog({ open, onOpenChange, deal, onDone }) {
   const [cashAccountId, setCashAccountId] = useState("");
   const [note, setNote] = useState("");
   const [allowOverpay, setAllowOverpay] = useState(false);
+  const [proofFiles, setProofFiles] = useState([]);
   const [busy, setBusy] = useState(false);
   const [items, setItems] = useState([]);
   const [alloc, setAlloc] = useState({});
@@ -60,6 +62,7 @@ export default function ReceiptDialog({ open, onOpenChange, deal, onDone }) {
       setMethod("transfer");
       setNote("");
       setAllowOverpay(false);
+      setProofFiles([]);
     }
   }, [open, deal]);
 
@@ -80,6 +83,7 @@ export default function ReceiptDialog({ open, onOpenChange, deal, onDone }) {
       const res = await api.post("/finance/ar/receipts", {
         deal_id: deal.deal_id, amount: amt, method, note: note || null,
         allow_overpay: allowOverpay, cash_account_id: cashAccountId || null,
+        proof_file_ids: proofFiles,
         allocations: Object.entries(alloc).filter(([, v]) => Number(v) > 0).map(([item_id, v]) => ({ item_id, amount: Number(v) })),
       });
       const rec = res.data?.data?.receipt || {};
@@ -150,6 +154,12 @@ export default function ReceiptDialog({ open, onOpenChange, deal, onDone }) {
             <Label htmlFor="note">Catatan (opsional)</Label>
             <Textarea id="note" value={note} onChange={(e) => setNote(e.target.value)}
               placeholder="mis. DP 20%, cicilan termin I" rows={2} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Bukti bayar (struk transfer / foto)</Label>
+            <EvidenceUploader value={proofFiles} onChange={setProofFiles} ownerType="receipt_proof"
+              ownerId={deal?.deal_id} testId="ar-receipt-proof-input" label="Bukti bayar"
+              hint="tampil di kuitansi & semua laporan pembayaran; bisa dilampirkan belakangan." />
           </div>
 
           {excess > 0 ? (

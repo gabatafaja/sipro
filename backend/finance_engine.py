@@ -395,7 +395,8 @@ async def _after_paid_off(inv: dict, deal_id: str, org_id: str):
 
 
 async def apply_receipt(deal_id, amount, method, note, actor, org_id=ORG_ID,
-                        allow_overpay=False, cash_account_id=None, targets: dict = None) -> dict:
+                        allow_overpay=False, cash_account_id=None, targets: dict = None,
+                        proof_file_ids: list = None) -> dict:
     """Terima pembayaran -> alokasi ke item termin (pilihan kasir dulu, lalu jatuh tempo terlama) ->
     recalc outstanding -> naikkan contract_liability -> update unit.payment_status.
 
@@ -441,6 +442,7 @@ async def apply_receipt(deal_id, amount, method, note, actor, org_id=ORG_ID,
         "deposit_amount": excess, "funding": "cash", "method": method or "transfer",
         "cash_account_id": cash_account_id, "cash_account_name": (cash_acc or {}).get("name"),
         "cash_account_code": cash_code,
+        "proof_file_ids": [str(f) for f in (proof_file_ids or []) if f],
         "note": note, "allocations": allocations, "actor": actor, "created_at": ts}
     await db.receipts.insert_one(dict(receipt))
     if applied > 0:

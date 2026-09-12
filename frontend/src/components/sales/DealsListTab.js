@@ -114,6 +114,7 @@ export default function DealsListTab({ onChanged }) {
         <div className="flex flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
           <StatusPill status={d.status} group="deal_status" />
           {d.legal_stage === "ppjb" ? <StatusPill status="pending" label="PPJB" /> : null}
+          {d.akad_at && d.legal_stage !== "ajb" ? <StatusPill status="approved" label={`AKAD ${d.akad_at}`} /> : null}
           {d.legal_stage === "ajb" ? <StatusPill status="sold" label="AJB · SOLD" /> : null}
           <PricingApprovalBadge deal={d} onChanged={refresh} />
         </div>

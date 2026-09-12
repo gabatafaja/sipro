@@ -6,6 +6,7 @@ import StatusPill from "@/components/patterns/StatusPill";
 import { LoadingCards, ErrorState } from "@/components/patterns/StateViews";
 import PaymentProofDialog from "@/components/portal/PaymentProofDialog";
 import PortalBookingFeeCard from "@/components/portal/PortalBookingFeeCard";
+import ReceiptProofLinks from "@/components/finance/ReceiptProofLinks";
 import { formatIDR, formatDateWIB } from "@/utils/formatters";
 import portalApi from "@/services/portalClient";
 import { PORTAL, INTAKE, P58 } from "@/constants/testIds";
@@ -156,8 +157,9 @@ export default function PaymentsPanel() {
               <div className="divide-y">
                 {p.receipts.map((r) => (
                   <div key={r.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                    <span className="text-slate-500">
+                    <span className="flex flex-wrap items-center gap-1.5 text-slate-500">
                       {formatDateWIB(r.created_at)} · {r.method || "transfer"}
+                      {(r.proof_file_ids || []).length ? <ReceiptProofLinks receipt={r} portal /> : null}
                     </span>
                     <span className="tabular-nums text-emerald-600">{formatIDR(r.amount)}</span>
                   </div>

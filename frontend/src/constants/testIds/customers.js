@@ -7,6 +7,9 @@ export const CUSTOMERS = {
   table: "customers-table",
   row: "customer-row",
   detail: "customer-detail",
+  legalChips: "customers-legal-chips",
+  legalChip: "customers-legal-chip",
+  legalCell: "customer-legal-cell",
   // KYC
   kycFileInput: "customer-kyc-file-input",
   kycDocType: "customer-kyc-doctype",

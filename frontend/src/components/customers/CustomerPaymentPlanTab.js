@@ -13,6 +13,8 @@ import api from "@/services/apiClient";
 import { downloadFile } from "@/utils/fileDownload";
 import { formatDateWIB } from "@/utils/formatters";
 import LateFeePanel from "@/components/finance/LateFeePanel";
+import ReceiptProofLinks from "@/components/finance/ReceiptProofLinks";
+import AddonPlanBox from "@/components/customers/AddonPlanBox";
 import { CRMC, P58 } from "@/constants/testIds";
 
 /**
@@ -63,6 +65,8 @@ const TERM_TONE = {
 const paidOf = (item) => Number(item.paid_amount ?? item.paid ?? 0);
 
 function DealPlan({ deal, plan, late, onChanged }) {
+  const { can } = useAuth();
+  const mayAttachProof = can("finance", "update");
   const inv = plan?.data;
   if (!inv) {
     return (
@@ -75,11 +79,13 @@ function DealPlan({ deal, plan, late, onChanged }) {
       </div>
     );
   }
-  const items = inv.items || [];
+  const allItems = inv.items || [];
+  const items = allItems.filter((i) => i.basis !== "addon");
+  const addonItems = allItems.filter((i) => i.basis === "addon");
   const receipts = plan.receipts || [];
-  const total = Number(inv.total || 0);
-  const paid = Number(inv.paid || 0);
-  const outstanding = Number(inv.outstanding ?? (total - paid));
+  const total = items.reduce((a, i) => a + Number(i.amount || 0), 0);
+  const paid = items.reduce((a, i) => a + paidOf(i), 0);
+  const outstanding = total - paid;
   const overdue = items.filter((i) => planState(i, late).key === "terlambat");
   const dalamTenggang = items.filter((i) => planState(i, late).key === "dalam_tenggang");
   const overdueAmount = overdue.reduce(
@@ -94,6 +100,7 @@ function DealPlan({ deal, plan, late, onChanged }) {
           </p>
           <p className="text-[12px] text-muted-foreground">
             {items.length} termin · skema {inv.scheme_name || inv.scheme?.name || "—"}
+            {addonItems.length ? ` · ${addonItems.length} add-on ditagih terpisah (kotak di bawah)` : ""}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -106,7 +113,7 @@ function DealPlan({ deal, plan, late, onChanged }) {
       </div>
 
       <div data-testid={CRMC.planSummary} className="grid gap-2 sm:grid-cols-4">
-        {[["Nilai kontrak", total], ["Sudah dibayar", paid], ["Sisa kewajiban", outstanding],
+        {[["Nilai unit (termin)", total], ["Sudah dibayar", paid], ["Sisa kewajiban", outstanding],
           ["Tunggakan", overdueAmount]].map(([label, val]) => (
           <div key={label} className="rounded-lg border bg-secondary/40 px-2.5 py-1.5">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
@@ -197,6 +204,7 @@ function DealPlan({ deal, plan, late, onChanged }) {
                 <span>
                   {r.no || r.receipt_no || "Kuitansi"} · {formatDateWIB(r.created_at || r.date)}
                   {r.method ? ` · ${r.method}` : ""}
+                  {" "}<ReceiptProofLinks receipt={r} canAttach={mayAttachProof} onChanged={onChanged} />
                 </span>
                 <span className="flex items-center gap-2">
                   <span className="font-semibold tabular-nums">
@@ -225,6 +233,20 @@ function DealPlan({ deal, plan, late, onChanged }) {
       <LateFeePanel dealId={deal.id} unitCode={deal.unit_code || inv.unit_code}
         onChanged={onChanged} />
     </div>
+  );
+}
+
+/** Termin unit + kotak add-on terpisah (satu deal). */
+function DealPlanWithAddons({ deal, plan, late, onChanged }) {
+  const addonItems = (plan?.data?.items || []).filter((i) => i.basis === "addon");
+  return (
+    <>
+      <DealPlan deal={deal} plan={plan} late={late} onChanged={onChanged} />
+      {plan?.data ? (
+        <AddonPlanBox deal={deal} items={addonItems} receipts={plan.receipts || []}
+          planState={planState} late={late} />
+      ) : null}
+    </>
   );
 }
 
@@ -418,7 +440,7 @@ export default function CustomerPaymentPlanTab({ customer }) {
       {gap}
       {rows.map(({ deal, plan, late, contract, costs }) => (
         <React.Fragment key={deal.id}>
-          <DealPlan deal={deal} plan={plan} late={late} onChanged={load} />
+          <DealPlanWithAddons deal={deal} plan={plan} late={late} onChanged={load} />
           <AllinCostsSummary contract={contract} costs={costs} customerId={customer?.id} onChanged={load} />
         </React.Fragment>
       ))}

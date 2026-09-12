@@ -16,6 +16,8 @@ import api from "@/services/apiClient";
 import { downloadFile } from "@/utils/fileDownload";
 import { formatIDR } from "@/utils/formatters";
 import { P75 } from "@/constants/testIds";
+import EvidenceUploader from "@/components/patterns/EvidenceUploader";
+import ReceiptProofLinks from "@/components/finance/ReceiptProofLinks";
 
 /**
  * CostBillingPanel — biaya pass-through: invoice biaya (seri INB) → kuitansi biaya (KWB) → titipan →
@@ -46,7 +48,7 @@ export default function CostBillingPanel({ contract, onChanged }) {
     } finally { setBusy(false); }
   };
   const issue = () => run(() => api.post(`/contracts/${contract.id}/cost-invoices`), "Invoice biaya terbit.");
-  const pay = () => run(() => api.post(`/cost-invoices/${dlg.inv.id}/pay`, { amount: Number(form.amount) || 0, method: form.method || "transfer", note: form.note }), "Kuitansi biaya terbit → titipan bertambah.");
+  const pay = () => run(() => api.post(`/cost-invoices/${dlg.inv.id}/pay`, { amount: Number(form.amount) || 0, method: form.method || "transfer", note: form.note, proof_file_ids: form.proof_file_ids || [] }), "Kuitansi biaya terbit → titipan bertambah.");
   const disburse = () => run(() => api.post(`/contracts/${contract.id}/cost-disbursements`, { component_code: dlg.comp.code, amount: Number(form.amount) || 0, payee: form.payee, note: form.note }), "Titipan disalurkan (Titipan / Kas).");
   const expense = () => run(() => api.post(`/contracts/${contract.id}/cost-expenses`, { component_code: dlg.comp.code, amount: Number(form.amount) || dlg.comp.amount, vendor: form.payee, note: form.note }), "Beban penjualan dicatat lewat AP.");
 
@@ -106,6 +108,7 @@ export default function CostBillingPanel({ contract, onChanged }) {
           {(led.receipts || []).map((r) => (
             <p key={r.id} data-testid={P75.costReceiptRow} className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>Kuitansi biaya <b className="font-mono">{r.receipt_no}</b> · {formatIDR(r.amount)} · {r.method}</span>
+              <ReceiptProofLinks receipt={r} />
               <button type="button" data-testid={P75.costReceiptPdf} className="inline-flex items-center text-primary underline-offset-2 hover:underline"
                 onClick={() => pdf(`/cost-receipts/${r.id}/pdf`, "kuitansi-biaya.pdf")}><Printer className="mr-0.5 h-3 w-3" /> PDF</button>
             </p>
@@ -155,6 +158,11 @@ export default function CostBillingPanel({ contract, onChanged }) {
             </>) : null}
             <Label htmlFor="cost-note">Catatan</Label>
             <Textarea id="cost-note" data-testid={P75.costNote} rows={2} className="bg-background" value={form.note || ""} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} />
+            {view?.kind === "pay" ? (<>
+              <Label>Bukti bayar</Label>
+              <EvidenceUploader value={form.proof_file_ids || []} onChange={(v) => setForm((f) => ({ ...f, proof_file_ids: v }))}
+                ownerType="receipt_proof" ownerId={contract?.id} testId="cost-pay-proof-input" label="Bukti bayar" />
+            </>) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDlg(null)}>Batal</Button>

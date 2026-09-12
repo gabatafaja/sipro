@@ -12,12 +12,14 @@ import {
 import StatusPill from "@/components/patterns/StatusPill";
 import MoneyText from "@/components/patterns/MoneyText";
 import ReferenceSelect from "@/components/patterns/ReferenceSelect";
+import EvidenceUploader from "@/components/patterns/EvidenceUploader";
 import { useAuth } from "@/context/AuthContext";
 import { useReference } from "@/context/ReferenceContext";
 import api from "@/services/apiClient";
 import { formatDateTimeWIB, formatDateWIB } from "@/utils/formatters";
 import { BOOKING_FEE } from "@/constants/testIds";
 import { BookingFeeProofs, BookingFeeRefund } from "@/components/sales/BookingFeeExtras";
+import ReceiptProofLinks from "@/components/finance/ReceiptProofLinks";
 
 const STATUS_TONE = { unpaid: "unpaid", partial: "partial", paid: "paid", cancelled: "cancelled" };
 
@@ -46,7 +48,8 @@ export default function BookingFeePanel({ dealId, compact = false, onChanged }) 
     setBusy(true);
     try {
       const res = await api.post(`/booking-fee/deals/${dealId}/pay`,
-        { amount: Number(form.amount) || 0, method: form.method, note: form.note || null });
+        { amount: Number(form.amount) || 0, method: form.method, note: form.note || null,
+          proof_file_ids: form.proof_file_ids || [] });
       toast.success(res.data.message || "Pembayaran booking fee dicatat.");
       setPayOpen(false); load(); onChanged?.();
     } catch (e) { toast.error(e?.response?.data?.detail || "Gagal mencatat pembayaran."); }
@@ -96,10 +99,13 @@ export default function BookingFeePanel({ dealId, compact = false, onChanged }) 
           <FileText className="mr-1 h-3.5 w-3.5" /> Tagihan PDF
         </Button>
         {(data.receipts || []).map((r) => (
-          <Button key={r.id} size="sm" variant="ghost" data-testid={BOOKING_FEE.receiptPdf}
-            onClick={() => openPdf(`/finance/ar/receipts/${r.id}/pdf`)} title={formatDateTimeWIB(r.created_at)}>
-            <Receipt className="mr-1 h-3.5 w-3.5" /> {r.receipt_no}
-          </Button>
+          <span key={r.id} className="inline-flex items-center gap-1">
+            <Button size="sm" variant="ghost" data-testid={BOOKING_FEE.receiptPdf}
+              onClick={() => openPdf(`/finance/ar/receipts/${r.id}/pdf`)} title={formatDateTimeWIB(r.created_at)}>
+              <Receipt className="mr-1 h-3.5 w-3.5" /> {r.receipt_no}
+            </Button>
+            <ReceiptProofLinks receipt={r} canAttach={mayPay} onChanged={load} />
+          </span>
         ))}
         {mayPay && ["unpaid", "partial"].includes(inv.status) ? (
           <Button size="sm" data-testid={BOOKING_FEE.payBtn} onClick={openPay}>Catat pembayaran</Button>
@@ -137,6 +143,11 @@ export default function BookingFeePanel({ dealId, compact = false, onChanged }) 
               <Label htmlFor="bf-note">Catatan</Label>
               <Textarea id="bf-note" rows={2} value={form.note} placeholder="Mis. transfer BCA a.n. pembeli"
                 onChange={(e) => setForm({ ...form, note: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Bukti bayar</Label>
+              <EvidenceUploader value={form.proof_file_ids || []} onChange={(v) => setForm({ ...form, proof_file_ids: v })}
+                ownerType="receipt_proof" ownerId={dealId} testId="bf-pay-proof-input" label="Bukti bayar" />
             </div>
           </div>
           <DialogFooter>

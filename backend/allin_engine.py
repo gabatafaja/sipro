@@ -311,7 +311,8 @@ async def issue_cost_invoice(org: str, contract: dict, actor: str) -> dict:
     return doc
 
 
-async def pay_cost_invoice(org: str, invoice_id: str, amount: int, method: str, note: str, actor: str) -> dict:
+async def pay_cost_invoice(org: str, invoice_id: str, amount: int, method: str, note: str, actor: str,
+                           proof_file_ids: list = None) -> dict:
     """Kuitansi biaya → jurnal Kas / Titipan biaya customer (kewajiban, BUKAN pendapatan)."""
     inv = await db.cost_invoices.find_one({"org_id": org, "id": invoice_id}, {"_id": 0})
     if not inv or inv.get("status") == "void":
@@ -329,6 +330,7 @@ async def pay_cost_invoice(org: str, invoice_id: str, amount: int, method: str, 
                                               context={"unit_id": inv.get("unit_id"),
                                                        "customer_id": inv.get("customer_id")}),
           "amount": amount, "method": method or "transfer", "note": note, "status": "posted",
+          "proof_file_ids": [str(f) for f in (proof_file_ids or []) if f],
           "actor": actor, "created_at": ts}
     await db.cost_receipts.insert_one(dict(rc))
     rc.pop("_id", None)

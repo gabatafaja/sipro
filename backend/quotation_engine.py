@@ -26,6 +26,7 @@ import logging
 from datetime import date, timedelta
 
 import finance_engine as fin
+import reference as ref
 import sequences as seq
 import settings_store as cfg
 from core_utils import new_id, now_iso, today_iso_date
@@ -155,15 +156,20 @@ async def simulate(org: str = ORG_ID, *, unit_id: str, addons: list = None,
         raise ValueError("Diskon manual tidak diizinkan — pilih skema diskon, promo, atau "
                          "kupon yang dikonfigurasi di Pusat Konfigurasi › Harga & Promo.")
     unit = await _unit_or_error(org, unit_id)
-    base_price = int(unit.get("price") or 0)
+    scheme = await _scheme(org, scheme_id)
+    scheme_explicit = bool(scheme_id)  # dipilih sales (bukan bawaan) → mengunci jenis kontrak
+    # Harga unit mengikuti JENIS skema (cash keras / bertahap / KPR) bila master unit
+    # menyimpan harga khusus; jika tidak, harga dasar.
+    import unit_pricing as up
+    scheme_kind = scheme.get("kind") or scheme.get("type")
+    base_price = up.price_for(unit, scheme_kind)
+    price_source = up.price_source(unit, scheme_kind)
     lines = await addon_lines(org, unit, addons)
     addon_total = sum(x["amount"] for x in lines
                       if x["finance_treatment"] not in ("info",))
     # ADD-ON = komponen pembayaran TERPISAH: bukan bagian harga unit, tidak masuk termin,
     # tidak masuk simulasi KPR. `gross` di sini = harga unit saja.
     gross = base_price
-    scheme = await _scheme(org, scheme_id)
-    scheme_explicit = bool(scheme_id)  # dipilih sales (bukan bawaan) → mengunci jenis kontrak
     # Fase 88C: dasar hitung per SASARAN — DP = termin uang muka dari skema, booking fee dari
     # bawaan organisasi; komponen biaya all-in menyusul saat skema all-in dipilih (reservasi).
     pre_terms = fin.compute_scheme_items(scheme, gross, today_iso_date())
@@ -202,6 +208,8 @@ async def simulate(org: str = ORG_ID, *, unit_id: str, addons: list = None,
                  "project_id": unit.get("project_id"), "block": unit.get("block"),
                  "cluster_code": unit.get("cluster_code"), "status": unit.get("status")},
         "base_price": base_price, "addons": lines, "addon_total": addon_total,
+        "price_scheme_kind": scheme_kind, "price_source": price_source,
+        "list_price": int(unit.get("price") or 0),
         "addon_net_total": addon_total, "scheme_explicit": scheme_explicit,
         "gross_price": gross, "discount_amount": discount, "discount_pct": discount_pct,
         "discount_lines": disc["lines"], "discount_scheme": _pick("discount_scheme"),
@@ -279,8 +287,11 @@ def build_payment_breakdown(calc: dict) -> dict:
         rows.append({"code": code, "label": label, "amount": int(amount or 0), "group": group, **extra})
 
     unit = calc.get("unit") or {}
+    kind_label = ref.label_of("payment_scheme_kind", calc.get("price_scheme_kind")) \
+        if calc.get("price_scheme_kind") else None
     add("UNIT_PRICE", f"Harga unit {unit.get('code') or ''}".strip(), calc.get("base_price"), "harga",
-        hint=unit.get("type"))
+        hint=(f"{unit.get('type') or ''} · harga skema {kind_label}".strip(" ·")
+              if calc.get("price_source") == "skema" and kind_label else unit.get("type")))
     for x in calc.get("discount_lines") or []:
         if x.get("target") in ("cost", "addon"):
             continue

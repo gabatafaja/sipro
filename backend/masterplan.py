@@ -289,6 +289,15 @@ async def patch_unit(unit_id: str, payload, actor: str, org: str = ORG_ID) -> di
         patch["price"] = int(data["price"])
         hist.append({"field": "price", "from": unit.get("price"), "to": patch["price"],
                      "at": now_iso(), "actor": actor, "reason": reason or None})
+    if "scheme_prices" in data:
+        import unit_pricing as up
+        new_sp = up.clean_scheme_prices(data["scheme_prices"])
+        if new_sp != (unit.get("scheme_prices") or {}):
+            if unit.get("status") in ACTIVE_SALES and not reason:
+                raise ValueError("Unit sudah terikat transaksi — perubahan harga per skema wajib beralasan.")
+            patch["scheme_prices"] = new_sp
+            hist.append({"field": "scheme_prices", "from": unit.get("scheme_prices"), "to": new_sp,
+                         "at": now_iso(), "actor": actor, "reason": reason or None})
     if not patch:
         raise ValueError("Tidak ada perubahan.")
     patch.update({"updated_at": now_iso(), "updated_by": actor})

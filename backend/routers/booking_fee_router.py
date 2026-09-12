@@ -51,7 +51,8 @@ async def pay(deal_id: str, payload: BookingFeePayIn,
     await _deal_visible(org, deal_id, user)
     try:
         out = await bf.pay(org, deal_id, amount=payload.amount, method=payload.method,
-                           note=payload.note, actor=user.get("email"))
+                           note=payload.note, actor=user.get("email"),
+                           proof_file_ids=payload.proof_file_ids)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     await audit_log(user, "pay_booking_fee", "finance", deal_id,

@@ -183,12 +183,16 @@ async def bank_summary(org: str) -> dict:
     for r in rows:
         r["outstanding"] = r["plafon"] - r["disbursed"]
     held.sort(key=lambda h: (not h["ready"], -(h["days_since_akad"] or 0), -h["amount"]))
+    kpr_q = {"org_id": org, "scheme": "kpr", "state": {"$nin": ["cancelled"]}}
+    akad_done = await db.contracts.count_documents({**kpr_q, "legal.akad_kredit": {"$ne": None}})
+    kpr_total = await db.contracts.count_documents(kpr_q)
     return {"banks": rows, "held": held, "no_scheme": no_scheme,
             "totals": {"plafon": sum(r["plafon"] for r in rows), "disbursed": sum(r["disbursed"] for r in rows),
                        "ready_amount": sum(r["ready_amount"] for r in rows),
                        "waiting_amount": sum(r["waiting_amount"] for r in rows),
                        "ready": sum(r["ready"] for r in rows), "waiting": sum(r["waiting"] for r in rows),
-                       "no_scheme": len(no_scheme)}}
+                       "no_scheme": len(no_scheme),
+                       "akad_done": akad_done, "akad_pending": max(0, kpr_total - akad_done)}}
 
 
 async def run_tranche_reminders(org: str = ORG_ID) -> dict:

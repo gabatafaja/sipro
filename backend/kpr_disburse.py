@@ -239,7 +239,8 @@ async def disburse(org: str, contract: dict, app: dict, payload: dict, user: dic
                                 f"Pencairan KPR {app.get('bank_name') or ''} "
                                 f"{(tranche or {}).get('name') or ''} ({payload.get('date') or ts[:10]})".strip(),
                                 actor, org_id=org, allow_overpay=allow_deposit,
-                                cash_account_id=payload.get("cash_account_id"))
+                                cash_account_id=payload.get("cash_account_id"),
+                                proof_file_ids=[payload["file_id"]] if payload.get("file_id") else None)
     receipt = rc.get("receipt") or {}
     did = new_id()
     entry = {"id": did, "amount": amount, "date": payload.get("date") or ts[:10],

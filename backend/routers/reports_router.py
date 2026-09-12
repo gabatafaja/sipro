@@ -19,6 +19,12 @@ async def revenue(user: dict = Depends(require_permission("finance", "view"))):
     return {"data": serialize_doc(await fr.revenue_report(user.get("org_id", ORG_ID)))}
 
 
+@router.get("/receipts")
+async def receipts(user: dict = Depends(require_permission("finance", "view"))):
+    """Laporan penerimaan pembayaran + status bukti bayar per kuitansi."""
+    return {"data": serialize_doc(await fr.receipts_report(user.get("org_id", ORG_ID)))}
+
+
 @router.get("/{kind}/pdf")
 async def report_pdf(kind: str, user: dict = Depends(require_permission("finance", "view"))):
     try:

@@ -44,6 +44,7 @@ class PayIn(BaseModel):
     amount: int
     method: Optional[str] = "transfer"
     note: Optional[str] = None
+    proof_file_ids: List[str] = []
 
 
 class DisburseIn(BaseModel):
@@ -242,7 +243,8 @@ async def issue_cost_invoice(cid: str, user: dict = Depends(require_permission("
 @router.post("/cost-invoices/{iid}/pay")
 async def pay_cost_invoice(iid: str, p: PayIn, user: dict = Depends(require_permission("finance", "create"))):
     try:
-        return {"data": await ae.pay_cost_invoice(_org(user), iid, p.amount, p.method, p.note, user.get("email"))}
+        return {"data": await ae.pay_cost_invoice(_org(user), iid, p.amount, p.method, p.note, user.get("email"),
+                                                  proof_file_ids=p.proof_file_ids)}
     except ValueError as e:
         raise _err(e)
 

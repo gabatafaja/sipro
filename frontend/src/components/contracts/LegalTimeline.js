@@ -26,18 +26,23 @@ export default function LegalTimeline({ contract, onChanged }) {
   const { can } = useAuth();
   const mayManage = can("contracts", "manage");
   const [stage, setStage] = useState(null);
-  const [form, setForm] = useState({ number: "", date: "", notary: "", place: "", note: "" });
+  const [form, setForm] = useState({ number: "", date: "", notary: "", place: "", note: "", override_reason: "" });
   const [busy, setBusy] = useState(false);
   const gates = contract?.gates || {};
   const legal = contract?.legal || {};
   const order = contract?.legal_order || [];
+  const needsOverride = !!stage && !gates[stage]?.ok && !!gates[stage]?.overridable;
 
   const open = (s) => {
-    setForm({ number: "", date: "", notary: "", place: "", note: "" });
+    setForm({ number: "", date: "", notary: "", place: "", note: "", override_reason: "" });
     setStage(s);
   };
 
   const submit = async () => {
+    if (needsOverride && form.override_reason.trim().length < 5) {
+      toast.error("Alasan pengecualian wajib diisi (minimal 5 huruf).");
+      return;
+    }
     setBusy(true);
     try {
       await api.post(`/contracts/${contract.id}/legal/${stage}`, {
@@ -46,6 +51,7 @@ export default function LegalTimeline({ contract, onChanged }) {
         notary: form.notary.trim() || undefined,
         place: form.place.trim() || undefined,
         note: form.note.trim() || undefined,
+        override_reason: needsOverride ? form.override_reason.trim() : undefined,
       });
       toast.success(`Tahap ${gates[stage]?.label || stage} tercatat.`);
       setStage(null);
@@ -86,21 +92,37 @@ export default function LegalTimeline({ contract, onChanged }) {
                     {legal[s].number ? `${legal[s].number} · ` : ""}
                     {legal[s].date ? formatDateWIB(legal[s].date) : ""}
                     {legal[s].notary ? ` · notaris ${legal[s].notary}` : ""}
+                    {legal[s].override ? (
+                      <span data-testid={`${P53.legalStep}-override`}
+                        className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                        title={`${legal[s].override.detail || ""} Alasan: ${legal[s].override.reason}`}>
+                        <ShieldAlert className="h-3 w-3" /> pengecualian · {legal[s].override.reason}
+                      </span>
+                    ) : null}
                   </p>
                 ) : (g.blocks || []).length ? (
                   <p data-testid={P53.legalBlocked}
                     className="mt-0.5 flex items-start gap-1.5 text-xs text-amber-700">
                     <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>{g.blocks.map((b) => b.detail).join(" ")}</span>
+                    <span>
+                      {g.blocks.map((b) => b.detail).join(" ")}
+                      {g.overridable ? " Manajer dapat mencatat dengan pengecualian beralasan." : ""}
+                    </span>
                   </p>
                 ) : (
-                  <p className="mt-0.5 text-xs text-emerald-700">Semua syarat sudah terpenuhi.</p>
+                  <p className="mt-0.5 text-xs text-emerald-700">
+                    Semua syarat sudah terpenuhi.
+                    {(g.warnings || []).length ? (
+                      <span className="ml-1 text-amber-700">{g.warnings.map((b) => b.detail).join(" ")}</span>
+                    ) : null}
+                  </p>
                 )}
               </div>
               {!done && mayManage ? (
-                <Button data-testid={`${P53.legalBtn}-${s}`} size="sm" variant="outline"
-                  disabled={!g.ok} onClick={() => open(s)}>
-                  Catat {g.label || s}
+                <Button data-testid={`${P53.legalBtn}-${s}`} size="sm"
+                  variant={g.ok ? "outline" : "secondary"}
+                  disabled={!g.ok && !g.overridable} onClick={() => open(s)}>
+                  {g.ok ? `Catat ${g.label || s}` : `Catat dengan pengecualian`}
                 </Button>
               ) : null}
             </li>
@@ -123,6 +145,25 @@ export default function LegalTimeline({ contract, onChanged }) {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            {needsOverride ? (
+              <div data-testid={`${P53.legalDialog}-override`}
+                className="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="flex items-start gap-1.5 text-xs text-amber-900">
+                  <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Penahan masih ada: {(gates[stage]?.blocks || []).map((b) => b.detail).join(" ")}{" "}
+                    Tahap tetap dicatat sebagai <b>pengecualian manajer</b>; tagihan yang belum
+                    lunas tetap hidup di rencana bayar.
+                  </span>
+                </p>
+                <Label htmlFor="lg-override">Alasan pengecualian (wajib)</Label>
+                <Textarea id="lg-override" rows={2} className="bg-background"
+                  data-testid={`${P53.legalDialog}-override-reason`}
+                  placeholder="mis. Bank sudah menjadwalkan akad; kelebihan tanah dibayar dari pencairan tahap 1"
+                  value={form.override_reason}
+                  onChange={(e) => setForm((f) => ({ ...f, override_reason: e.target.value }))} />
+              </div>
+            ) : null}
             <div className="space-y-1.5">
               <Label htmlFor="lg-num">Nomor akta / dokumen (opsional)</Label>
               <Input id="lg-num" className="bg-background" value={form.number}

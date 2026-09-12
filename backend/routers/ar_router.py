@@ -1,12 +1,14 @@
 """AR (piutang pembeli): jadwal, receipts, aging, BAST->RevRec. Slice Finance."""
 from fastapi import APIRouter, Depends, HTTPException
+from typing import List
+from pydantic import BaseModel, Field
 
 import listing as lst
 import stage_clock as clock
 import reference as ref
 from db import db, ORG_ID
 from core_utils import serialize_doc, parse_pagination
-from rbac import require_permission
+from rbac import audit_log, require_permission
 import finance_engine as fe
 from models import ArScheduleCreate, ReceiptCreate
 from models_finance import DepositApply, DepositReceive, DepositRefund
@@ -184,10 +186,33 @@ async def create_receipt(payload: ReceiptCreate,
                                      payload.note, user.get("email"), user.get("org_id", ORG_ID),
                                      allow_overpay=payload.allow_overpay,
                                      cash_account_id=payload.cash_account_id,
-                                     targets={a.item_id: a.amount for a in (payload.allocations or [])} or None)
+                                     targets={a.item_id: a.amount for a in (payload.allocations or [])} or None,
+                                     proof_file_ids=payload.proof_file_ids)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"data": serialize_doc(res)}
+
+
+class ReceiptProofIn(BaseModel):
+    proof_file_ids: List[str] = Field(min_length=1)
+
+
+@router.patch("/receipts/{rid}/proof")
+async def attach_receipt_proof(rid: str, payload: ReceiptProofIn,
+                               user: dict = Depends(require_permission("finance", "update"))):
+    """Lampirkan/tambah bukti bayar pada kuitansi yang sudah ada (menambah, tidak menimpa)."""
+    org = user.get("org_id", ORG_ID)
+    rc = await db.receipts.find_one({"id": rid, "org_id": org}, {"_id": 0})
+    if not rc:
+        raise HTTPException(status_code=404, detail="Kuitansi tidak ditemukan")
+    ids = [str(f) for f in payload.proof_file_ids if f]
+    n = await db.files.count_documents({"id": {"$in": ids}, "is_deleted": False})
+    if n != len(set(ids)):
+        raise HTTPException(status_code=400, detail="Ada berkas bukti yang tidak ditemukan.")
+    await db.receipts.update_one({"id": rid}, {"$addToSet": {"proof_file_ids": {"$each": ids}}})
+    await audit_log(user, "update", "receipts", rid, {"proof_file_ids": ids})
+    rc = await db.receipts.find_one({"id": rid}, {"_id": 0})
+    return {"data": serialize_doc(rc)}
 
 
 @router.post("/{deal_id}/bast")
@@ -255,6 +280,7 @@ async def receipt_pdf(rid: str, user: dict = Depends(require_permission("finance
         f"Cara bayar : {_ref_label('payment_method', doc.get('method'))}",
         f"Dialokasikan ke : {alokasi}",
         f"Catatan : {doc.get('note') or '-'}",
+        f"Bukti bayar : {len([p for p in (doc.get('proof_file_ids') or []) if p])} lampiran terarsip di sistem",
         "",
         "Kwitansi ini sah sebagai bukti penerimaan pembayaran dan dicetak dari sistem.",
     ])

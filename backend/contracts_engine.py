@@ -84,10 +84,15 @@ async def build_breakdown(org: str, contract: dict) -> dict:
 
     unit_price = int(deal.get("price") or unit.get("price") or 0)
     # `deals.price` pada deal hasil penawaran sudah NETTO (diskon dipotong); harga unit
-    # murni dibaca dari master unit supaya diskon tidak hilang dari rincian.
-    base_price = int(unit.get("price") or unit_price)
+    # murni dibaca dari master unit — menurut JENIS skema kontrak bila unit punya harga per
+    # skema (`unit_pricing.price_for`) — supaya diskon tidak hilang dari rincian.
+    import unit_pricing as up
+    base_price = up.price_for(unit, scheme) or unit_price
+    price_note = f"Tipe {unit.get('type') or '-'} · unit {unit.get('code') or '-'}"
+    if up.price_source(unit, scheme) == "skema":
+        price_note += f" · harga skema {ref.label_of('payment_scheme_kind', scheme)}"
     add("UNIT_PRICE", "Harga unit", base_price, group="harga", treatment="revenue",
-        note=f"Tipe {unit.get('type') or '-'} · unit {unit.get('code') or '-'}")
+        note=price_note)
 
     addons = deal.get("addons") or []
     buckets = {}
@@ -478,14 +483,19 @@ async def legal_gates(org: str, contract: dict, breakdown: dict = None) -> dict:
     paid = int((inv or {}).get("paid") or 0)
     dp_amount = int(((inv or {}).get("items") or [{}])[0].get("amount") or 0) if inv else 0
     out = {}
+    # Penahan yang boleh dikecualikan manajer (`contracts:manage`) dengan alasan tertulis.
+    OVERRIDABLE = {"kelebihan_tanah_belum_lunas"}
 
-    def gate(stage, blocks):
+    def gate(stage, blocks, warnings=None):
         out[stage] = {
             "stage": stage, "label": ref.label_of("contract_legal_stage", stage),
             "done": bool(legal.get(stage)),
             "ok": not blocks,
+            "overridable": bool(blocks) and all(c in OVERRIDABLE for c, _ in blocks),
             "blocks": [{"code": c, "label": ref.label_of("legal_block", c), "detail": d}
                        for c, d in blocks],
+            "warnings": [{"code": c, "label": ref.label_of("legal_block", c), "detail": d}
+                         for c, d in (warnings or [])],
         }
 
     # --- PPJB: DP/termin pertama harus benar-benar masuk.
@@ -497,11 +507,14 @@ async def legal_gates(org: str, contract: dict, breakdown: dict = None) -> dict:
                   f"DP {_rp(dp_amount)} belum terbayar (baru {_rp(paid)} diterima)."))
     gate("ppjb", b)
 
-    # --- Akad kredit: hanya KPR, wajib SP3K + kelebihan tanah lunas `[DOC]`.
+    # --- Akad kredit: hanya KPR, wajib SP3K + kelebihan tanah lunas `[DOC]`
+    # (`[CFG] addon.excess_land_must_be_paid_before_akad`; bila dimatikan → peringatan saja).
     spkt_kinds = list(await cfg.get("addon.spkt_scheme_kinds", org_id=org) or [])
     spkt_wajib = (bool(await cfg.get("addon.require_spkt_for_excess_land", org_id=org))
                   and scheme in spkt_kinds and bd.get("has_excess_land"))
+    excess_gate = bool(await cfg.get("addon.excess_land_must_be_paid_before_akad", org_id=org))
     b = []
+    w = []
     if scheme != "kpr":
         b.append(("bukan_kpr", "Akad kredit hanya ada pada skema KPR."))
     else:
@@ -516,10 +529,11 @@ async def legal_gates(org: str, contract: dict, breakdown: dict = None) -> dict:
                 b.append(("spkt_belum_ada",
                           "Ada kelebihan tanah tetapi SPKT belum diterbitkan."))
             if not await _excess_land_paid(org, contract, bd):
-                b.append(("kelebihan_tanah_belum_lunas",
-                          f"Kelebihan tanah {_rp(bd.get('excess_land'))} wajib lunas "
-                          "sebelum akad kredit."))
-    gate("akad_kredit", b)
+                msg = (f"Kelebihan tanah {_rp(bd.get('excess_land'))} belum lunas"
+                       + (" — wajib lunas sebelum akad kredit." if excess_gate
+                          else " (kebijakan organisasi: tidak menahan akad)."))
+                (b if excess_gate else w).append(("kelebihan_tanah_belum_lunas", msg))
+    gate("akad_kredit", b, w)
 
     # --- Pelunasan: dikonfirmasi dari uang yang masuk, bukan dari klik.
     b = []
@@ -698,9 +712,21 @@ async def legal_advance(org: str, contract_id: str, stage: str, payload: dict,
                          "tercatat untuk kontrak ini.")
     gates = await legal_gates(org, c)
     g = gates.get(stage) or {}
+    override = None
     if not g.get("ok"):
-        sebab = " ".join(b["detail"] for b in g.get("blocks", []))
-        raise ValueError(f"Belum bisa dimajukan ke {g.get('label')}. {sebab}".strip())
+        reason = " ".join(str(payload.get("override_reason") or "").split())
+        if g.get("overridable") and reason:
+            if len(reason) < 5:
+                raise ValueError("Alasan pengecualian minimal 5 huruf.")
+            override = {"reason": reason, "by": actor, "at": now_iso(),
+                        "blocks": [b["code"] for b in g.get("blocks", [])],
+                        "detail": " ".join(b["detail"] for b in g.get("blocks", []))}
+        else:
+            sebab = " ".join(b["detail"] for b in g.get("blocks", []))
+            if g.get("overridable"):
+                sebab += (" Manajer dapat mencatat tahap ini dengan PENGECUALIAN "
+                          "(alasan tertulis wajib).")
+            raise ValueError(f"Belum bisa dimajukan ke {g.get('label')}. {sebab}".strip())
     ts = now_iso()
     number = payload.get("number")
     if stage in ("ppjb", "ajb") and not number:
@@ -711,12 +737,23 @@ async def legal_advance(org: str, contract_id: str, stage: str, payload: dict,
              "number": number, "date": payload.get("date") or ts[:10],
              "notary": payload.get("notary"), "place": payload.get("place"),
              "file_id": payload.get("file_id"), "note": payload.get("note"),
+             "override": override,
              "at": ts, "by": actor}
     await db.contracts.update_one({"id": contract_id}, {
         "$set": {f"legal.{stage}": entry, "legal_stage": stage, "updated_at": ts},
         "$push": {"legal_history": entry}})
     # ---- cermin ke `deals` supaya layar & gate lama tetap menyatakan hal yang sama ----
-    deal_set = {"updated_at": ts}
+    deal_set = {"updated_at": ts, f"legal_dates.{stage}": entry["date"]}
+    if stage == "akad_kredit":
+        deal_set["akad_at"] = entry["date"]
+    await db.customers.update_one({"id": c.get("customer_id")}, {"$set": {
+        "contract_legal_stage": stage, f"legal_dates.{stage}": entry["date"],
+        "updated_at": ts}})
+    if override:
+        await add_activity(entity_type="customer", entity_id=c.get("customer_id"),
+                           type="system", actor=actor, org_id=org,
+                           body=(f"PENGECUALIAN {entry['label']} unit {c.get('unit_code')}: "
+                                 f"{override['detail']} Alasan: {override['reason']}"))
     if stage == "ppjb":
         deal_set.update({"legal_stage": "ppjb", "ppjb": {
             "number": number, "signed_date": entry["date"], "signed_by": c.get("customer_name"),

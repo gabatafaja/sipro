@@ -15,6 +15,7 @@ import {
 import StatusPill from "@/components/patterns/StatusPill";
 import { LoadingCards, ErrorState } from "@/components/patterns/StateViews";
 import ReceiptDialog from "@/components/finance/ReceiptDialog";
+import ReceiptProofLinks from "@/components/finance/ReceiptProofLinks";
 import PaymentBreakdown from "@/components/quotations/PaymentBreakdown";
 import SprComparePanel from "@/components/finance/SprComparePanel";
 import { useReference } from "@/context/ReferenceContext";
@@ -43,8 +44,9 @@ export default function ArDetailSheet({ dealId, open, onOpenChange, onChanged })
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [deleteReceipt, setDeleteReceipt] = useState(null);
   const [deleteReason, setDeleteReason] = useState("");
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const isFullAccess = ["owner", "super_admin"].includes(user?.role);
+  const mayAttachProof = can("finance", "update");
 
   const removeReceipt = async () => {
     setBusy(true);
@@ -285,6 +287,7 @@ export default function ArDetailSheet({ dealId, open, onOpenChange, onChanged })
                           {rc.funding === "deposit" ? "Dari titipan" : labelOf("payment_method", rc.method)}
                           {" · "}{formatDateWIB(rc.created_at)}
                         </p>
+                        <ReceiptProofLinks receipt={rc} canAttach={mayAttachProof} onChanged={load} />
                       </div>
                       <p className="max-w-[45%] truncate text-[11px] text-muted-foreground">{rc.note || ""}</p>
                       {isFullAccess ? (

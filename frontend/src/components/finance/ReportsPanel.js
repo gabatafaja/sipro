@@ -13,6 +13,7 @@ import EmptyState from "@/components/patterns/EmptyState";
 import { LoadingCards, ErrorState } from "@/components/patterns/StateViews";
 import { formatIDR, formatDateWIB } from "@/utils/formatters";
 import api from "@/services/apiClient";
+import ReceiptProofLinks from "@/components/finance/ReceiptProofLinks";
 import { FINANCE } from "@/constants/testIds";
 
 const AGING = [["current", "Lancar"], ["1-30", "1-30 hari"], ["31-60", "31-60 hari"],
@@ -25,9 +26,20 @@ const REPORTS = {
   "commissions": { label: "Komisi Sales", columns: ["Unit", "Sales", "Skema", "Komisi", "Status"] },
   "collections": { label: "Worklist Penagihan", columns: ["Unit", "Pembeli", "Jatuh Tempo", "Telat (hari)", "Tunggakan", "Denda"] },
   "cashflow": { label: "Proyeksi Arus Kas", columns: ["Periode", "Kas Masuk", "Kas Keluar", "Net", "Kumulatif"] },
+  "receipts": { label: "Penerimaan Pembayaran (bukti bayar)", columns: ["Tanggal", "No. Kuitansi", "Unit", "Metode", "Nominal", "Bukti bayar"] },
 };
 
+const csvOf = (cell) => (cell && typeof cell === "object" ? (cell.props?.["data-csv"] ?? "") : cell);
+
 async function buildRows(type) {
+  if (type === "receipts") {
+    const r = await api.get("/finance/reports/receipts");
+    return (r.data.data?.rows || []).map((x) => [formatDateWIB(x.created_at), x.receipt_no || "-",
+      x.unit_code || "-", x.method || "-", formatIDR(x.amount),
+      <span data-csv={x.has_proof ? `Ya (${x.proof_file_ids.length})` : "Tidak"} className="inline-flex justify-end">
+        <ReceiptProofLinks receipt={x} />
+      </span>]);
+  }
   if (type === "ar-aging") {
     const r = await api.get("/finance/ar/aging");
     const b = r.data.data?.buckets || {};
@@ -86,7 +98,7 @@ export default function ReportsPanel() {
 
   const exportCsv = () => {
     const esc = (s) => `"${String(s).replace(/"/g, '""')}"`;
-    const lines = [meta.columns.map(esc).join(",")].concat(rows.map((r) => r.map(esc).join(",")));
+    const lines = [meta.columns.map(esc).join(",")].concat(rows.map((r) => r.map((c) => esc(csvOf(c))).join(",")));
     const blob = new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

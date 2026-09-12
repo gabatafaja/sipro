@@ -99,7 +99,8 @@ def refund_summary(inv: dict, deal: dict) -> dict:
                                 "Refund hanya untuk deal yang dibatalkan/kedaluwarsa."))}
 
 
-async def pay(org: str, deal_id: str, *, amount: int, method: str, note: str, actor: str) -> dict:
+async def pay(org: str, deal_id: str, *, amount: int, method: str, note: str, actor: str,
+              proof_file_ids: list = None) -> dict:
     """Terima booking fee → kwitansi bernomor + titipan pelanggan berjurnal + status tagihan."""
     from finance_engine import _deposit_move, notify_finance
     inv = await get_invoice(org, deal_id)
@@ -124,6 +125,7 @@ async def pay(org: str, deal_id: str, *, amount: int, method: str, note: str, ac
         "booking_fee_invoice_id": inv["id"], "invoice_no": inv["no"],
         "amount": amount, "applied": 0, "deposit_amount": amount, "funding": "cash",
         "method": method or "transfer", "note": note,
+        "proof_file_ids": [str(f) for f in (proof_file_ids or []) if f],
         "allocations": [{"item_id": None, "label": f"Booking fee ({inv['no']})", "amount": amount}],
         "actor": actor, "created_at": ts,
     }

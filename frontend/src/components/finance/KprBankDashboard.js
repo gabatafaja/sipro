@@ -89,6 +89,25 @@ export default function KprBankDashboard() {
         ))}
       </div>
 
+      <div data-testid="kpr-bank-akad-cards" className="grid gap-2 sm:grid-cols-2">
+        <Link to="/customers?legal_stage=akad_kredit" data-testid="kpr-bank-akad-done"
+          className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 hover:bg-emerald-100">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-emerald-800">Sudah akad kredit</p>
+            <p className="text-2xl font-semibold tabular-nums text-emerald-900">{tot.akad_done ?? 0}</p>
+          </div>
+          <span className="text-xs text-emerald-800">Lihat pelanggan →</span>
+        </Link>
+        <Link to="/customers?legal_stage=ppjb,belum" data-testid="kpr-bank-akad-pending"
+          className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 hover:bg-amber-100">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-amber-800">Kontrak KPR belum akad</p>
+            <p className="text-2xl font-semibold tabular-nums text-amber-900">{tot.akad_pending ?? 0}</p>
+          </div>
+          <span className="text-xs text-amber-800">Lihat pelanggan →</span>
+        </Link>
+      </div>
+
       {!(data.banks || []).length ? (
         <p className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">Belum ada pengajuan KPR dengan plafon SP3K.</p>
       ) : (

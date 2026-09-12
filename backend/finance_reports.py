@@ -295,7 +295,36 @@ _BUCKET_LABELS = [("current", "Lancar"), ("1-30", "1-30 hari"), ("31-60", "31-60
                   ("61-90", "61-90 hari"), (">90", "> 90 hari")]
 
 
+async def receipts_report(org_id=ORG_ID, limit: int = 500) -> dict:
+    """Daftar penerimaan (kuitansi unit/booking fee/KPR) + status BUKTI BAYAR per kuitansi."""
+    rows = await db.receipts.find({"org_id": org_id}, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    out = []
+    for r in rows:
+        proofs = [p for p in (r.get("proof_file_ids") or []) if p]
+        out.append({"id": r["id"], "receipt_no": r.get("receipt_no"), "created_at": r.get("created_at"),
+                    "deal_id": r.get("deal_id"), "unit_code": r.get("unit_code"),
+                    "kind": r.get("kind") or ("kpr" if r.get("method") == "kpr" else "unit"),
+                    "method": r.get("method"), "funding": r.get("funding"),
+                    "amount": int(r.get("amount") or 0), "applied": int(r.get("applied") or 0),
+                    "deposit_amount": int(r.get("deposit_amount") or 0),
+                    "cash_account_name": r.get("cash_account_name"), "note": r.get("note"),
+                    "actor": r.get("actor"), "proof_file_ids": proofs, "has_proof": bool(proofs)})
+    return {"rows": out, "totals": {"count": len(out), "amount": sum(x["amount"] for x in out),
+                                    "with_proof": sum(1 for x in out if x["has_proof"]),
+                                    "without_proof": sum(1 for x in out if not x["has_proof"])}}
+
+
 async def report_dataset(kind, org_id=ORG_ID) -> dict:
+    if kind == "receipts":
+        rp = await receipts_report(org_id)
+        rows = [[_fmt_date(r["created_at"]), r["receipt_no"] or "-", r["unit_code"] or "-",
+                 r["method"] or "-", _rp(r["amount"]),
+                 f"Ya ({len(r['proof_file_ids'])})" if r["has_proof"] else "Tidak"]
+                for r in rp["rows"]]
+        tt = rp["totals"]
+        return {"title": "Penerimaan Pembayaran", "subtitle": f"{tt['count']} kuitansi · {tt['with_proof']} berbukti · {tt['without_proof']} tanpa bukti",
+                "columns": ["Tanggal", "No. Kuitansi", "Unit", "Metode", "Nominal", "Bukti bayar"], "rows": rows,
+                "total_row": ["Total", "", "", "", _rp(tt["amount"]), ""]}
     if kind == "ar-aging":
         ag = await fe.ar_aging(org_id)
         rows = [[lbl, _rp(ag["buckets"][k])] for k, lbl in _BUCKET_LABELS]

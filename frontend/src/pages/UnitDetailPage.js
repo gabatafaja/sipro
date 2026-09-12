@@ -28,6 +28,8 @@ import api from "@/services/apiClient";
 import { formatDateTimeWIB, formatIDR } from "@/utils/formatters";
 import { MASTERPLAN, P50 } from "@/constants/testIds";
 
+const SCHEME_KINDS = [["cash_keras", "Cash keras"], ["cash_bertahap", "Cash bertahap"], ["kpr", "KPR"]];
+
 function Row({ label, value }) {
   return (
     <div className="flex items-start justify-between gap-3 border-b py-2 last:border-0">
@@ -71,6 +73,7 @@ export default function UnitDetailPage() {
     try {
       await api.patch(`/masterplan/units/${id}`, {
         price: edit.price ? Number(edit.price) : undefined,
+        scheme_prices: Object.fromEntries(SCHEME_KINDS.map(([k]) => [k, Number(edit.scheme_prices?.[k]) || 0])),
         excess_land_m2: edit.excess_land_m2 !== "" ? Number(edit.excess_land_m2) : undefined,
         excess_land_price_agreed: edit.excess_land_price_agreed !== ""
           ? Number(edit.excess_land_price_agreed) : undefined,
@@ -122,6 +125,7 @@ export default function UnitDetailPage() {
               <>
                 <Button data-testid={MASTERPLAN.unitEditOpen} size="sm" variant="secondary"
                   onClick={() => setEdit({ price: u.price || "",
+                    scheme_prices: Object.fromEntries(SCHEME_KINDS.map(([k]) => [k, u.scheme_prices?.[k] ?? ""])),
                     excess_land_m2: u.excess_land_m2 ?? "",
                     excess_land_price_agreed: u.excess_land_price_agreed ?? "", reason: "" })}>
                   <Pencil className="mr-1.5 h-4 w-4" /> Ubah unit
@@ -168,6 +172,13 @@ export default function UnitDetailPage() {
               value={u.excess_land_price_agreed
                 ? `${formatIDR(u.excess_land_price_agreed)} /m²` : "belum disepakati"} />
             <Row label="Harga unit" value={formatIDR(u.price)} />
+            {SCHEME_KINDS.map(([k, label]) => (
+              <Row key={k} label={`Harga ${label}`}
+                value={<span data-testid={`unit-scheme-price-${k}`}>
+                  {u.scheme_prices?.[k] ? formatIDR(u.scheme_prices[k])
+                    : <span className="text-muted-foreground">= harga dasar</span>}
+                </span>} />
+            ))}
           </div>
           <div className="rounded-lg border bg-card p-4 shadow-[var(--shadow-card)]">
             <h2 className="mb-2 font-heading text-base font-semibold">Usulan spek tambahan</h2>
@@ -321,6 +332,23 @@ export default function UnitDetailPage() {
                 <RupiahInput id="un-price" data-testid={MASTERPLAN.unitEditPrice}
                   value={edit.price}
                   onChange={(e) => setEdit({ ...edit, price: e.target.value })} />
+              </div>
+              <div className="space-y-1.5 rounded-lg border p-2.5">
+                <Label>Harga per skema pembayaran (opsional — kosong = harga dasar)</Label>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {SCHEME_KINDS.map(([k, label]) => (
+                    <div key={k} className="space-y-1">
+                      <Label htmlFor={`un-sp-${k}`} className="text-[11px] text-muted-foreground">{label}</Label>
+                      <RupiahInput id={`un-sp-${k}`} data-testid={`unit-edit-scheme-price-${k}`}
+                        value={edit.scheme_prices?.[k] ?? ""} placeholder="= dasar"
+                        onChange={(e) => setEdit({ ...edit,
+                          scheme_prices: { ...(edit.scheme_prices || {}), [k]: e.target.value } })} />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Penawaran, reservasi, dan rincian kontrak memakai harga sesuai jenis skema yang dipilih pembeli.
+                </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
